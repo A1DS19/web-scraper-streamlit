@@ -1,6 +1,37 @@
 import streamlit as st
 from urllib.parse import urlparse
 import time
+import json
+import re
+
+
+def markdown_to_text(markdown_string):
+    """
+    Converts a markdown string to plain text.
+    """
+    # Remove headers
+    text = re.sub(r"#+\s", "", markdown_string)
+    # Remove bold and italics
+    text = re.sub(r"\*\*(.*?)\*\*|\*(.*?)\*", r"\1\2", text)
+    # Remove strikethrough
+    text = re.sub(r"~~(.*?)~~", r"\1", text)
+    # Remove inline code
+    text = re.sub(r"`(.*?)`", r"\1", text)
+    # Remove code blocks
+    text = re.sub(r"```.*?```", "", text, flags=re.DOTALL)
+    # Remove links, keeping the text
+    text = re.sub(r"\[(.*?)\]\(.*?\)", r"\1", text)
+    # Remove images
+    text = re.sub(r"!\[.*?\]\(.*?\)", "", text)
+    # Remove horizontal rules
+    text = re.sub(r"---", "", text)
+    # Remove blockquotes
+    text = re.sub(r"^>+\s?", "", text, flags=re.MULTILINE)
+    # Remove list items
+    text = re.sub(r"^\s*[\*\-]\s+", "", text, flags=re.MULTILINE)
+    # Remove extra newlines
+    text = re.sub(r"\n{2,}", "\n", text)
+    return text.strip()
 
 
 def create_markdown_content(results, url, page_metadata):
@@ -45,6 +76,9 @@ def create_markdown_content(results, url, page_metadata):
     links = [r for r in results if r["tag"] == "a" and r.get("href")]
     forms = [r for r in results if r["tag"] == "form"]
     inputs = [r for r in results if r["tag"] == "input"]
+    other_elements = [
+        r for r in results if r["tag"] not in ["button", "a", "form", "input"]
+    ]
 
     # Interactive elements summary
     if buttons or links or forms or inputs:
@@ -99,115 +133,209 @@ def create_markdown_content(results, url, page_metadata):
         markdown_lines.append("\n---\n")
 
     # Content sections with proper ID-based headers
-    for i, result in enumerate(results, 1):
-        element_id = result.get("id", "").strip()
-        element_tag = result["tag"].upper()
+    if other_elements:
+        markdown_lines.append("## 📜 Other Content")
+        for i, result in enumerate(other_elements, 1):
+            element_id = result.get("id", "").strip()
+            element_tag = result["tag"].upper()
 
-        # Create smart section headers based on element type and ID
-        if result["tag"] in ["h1", "h2", "h3", "h4", "h5", "h6"]:
-            header_level = int(result["tag"][1]) + 1
-            if element_id:
-                markdown_lines.append(
-                    f"{'#' * header_level} {result['text']} `#{element_id}`"
-                )
+            # Create smart section headers based on element type and ID
+            if result["tag"] in ["h1", "h2", "h3", "h4", "h5", "h6"]:
+                header_level = int(result["tag"][1]) + 1
+                if element_id:
+                    markdown_lines.append(
+                        f"{'#' * header_level} {result['text']} `#{element_id}`"
+                    )
+                else:
+                    markdown_lines.append(f"{'#' * header_level} {result['text']}")
             else:
-                markdown_lines.append(f"{'#' * header_level} {result['text']}")
+                # Regular content with element ID or smart fallback
+                if element_id:
+                    section_title = f"{element_id}"
+                else:
+                    section_title = f"{element_tag.lower()}-{i}"
 
-        elif result["tag"] == "title":
-            markdown_lines.append(f"## 📄 Page Title")
-            markdown_lines.append(f"\n{result['text']}")
+                markdown_lines.append(f"### {section_title} `({element_tag})`")
+                markdown_lines.append(f"\n{result['text']}")
 
-        elif result["tag"] == "a":
-            # Handle links with comprehensive details
-            section_title = element_id if element_id else f"link-{i}"
-            markdown_lines.append(f"## 🔗 {section_title}")
-            markdown_lines.append(f"\n**Link Text:** {result['text']}")
+            # Add comprehensive metadata for all elements
+            metadata_parts = [f"**Length:** {result['length']} chars"]
 
-            if result.get("href"):
-                href = result["href"]
-                # Make relative URLs absolute
-                if href.startswith("/"):
-                    base_url = f"{urlparse(url).scheme}://{urlparse(url).netloc}"
-                    href = base_url + href
-                elif href.startswith("#"):
-                    href = url + href
-                elif not href.startswith(("http://", "https://", "mailto:", "tel:")):
-                    base_url = f"{urlparse(url).scheme}://{urlparse(url).netloc}"
-                    href = base_url + "/" + href.lstrip("/")
+            if result.get("id"):
+                metadata_parts.append(f"**ID:** `{result['id']}`")
 
-                markdown_lines.append(f"**URL:** {href}")
-                markdown_lines.append(f"\n[{result['text']}]({href})")
-            else:
-                markdown_lines.append(f"**URL:** No href attribute")
-
-            if result.get("target"):
-                markdown_lines.append(f"**Target:** {result['target']}")
-            if result.get("title"):
-                markdown_lines.append(f"**Title:** {result['title']}")
-            if result.get("rel"):
-                markdown_lines.append(f"**Rel:** {result['rel']}")
-
-        elif result["tag"] == "button":
-            # Handle buttons with comprehensive details
-            section_title = element_id if element_id else f"button-{i}"
-            markdown_lines.append(f"## 🔘 {section_title}")
-            markdown_lines.append(f"\n**Button Text:** {result['text']}")
-
-            button_type = result.get("type", "button")
-            markdown_lines.append(f"**Button Type:** {button_type}")
-
-            if result.get("onclick"):
-                markdown_lines.append(f"**OnClick Event:** `{result['onclick']}`")
-
-            if result.get("form"):
-                markdown_lines.append(f"**Associated Form:** {result['form']}")
-
-            if result.get("disabled"):
-                markdown_lines.append(f"**Disabled:** Yes")
-
-        elif result["tag"] == "input":
-            # Handle input fields
-            section_title = (
-                element_id if element_id else (result.get("name") or f"input-{i}")
-            )
-            markdown_lines.append(f"## 📝 {section_title}")
-            markdown_lines.append(f"\n**Input Type:** {result.get('type', 'text')}")
-
-            if result.get("placeholder"):
-                markdown_lines.append(f"**Placeholder:** {result['placeholder']}")
-            if result.get("value"):
-                markdown_lines.append(f"**Value:** {result['value']}")
-            if result.get("name"):
-                markdown_lines.append(f"**Name:** {result['name']}")
-            if result.get("required"):
-                markdown_lines.append(f"**Required:** Yes")
-
-        elif result["tag"] == "form":
-            # Handle forms
-            section_title = element_id if element_id else f"form-{i}"
-            markdown_lines.append(f"## 📋 {section_title}")
-            markdown_lines.append(f"\n**Form Content:** {result['text']}")
-            markdown_lines.append(f"**Method:** {result.get('method', 'GET').upper()}")
-            if result.get("action"):
-                markdown_lines.append(f"**Action:** {result['action']}")
-
-        else:
-            # Regular content with element ID or smart fallback
-            if element_id:
-                section_title = f"{element_id}"
-            else:
-                section_title = f"{element_tag.lower()}-{i}"
-
-            markdown_lines.append(f"## {section_title} `({element_tag})`")
-            markdown_lines.append(f"\n{result['text']}")
-
-        # Add comprehensive metadata for all elements
-        metadata_parts = [f"**Length:** {result['length']} chars"]
-
-        if result.get("id"):
-            metadata_parts.append(f"**ID:** `{result['id']}`")
-
-        markdown_lines.append(f"\n*{' | '.join(metadata_parts)}*")
-        markdown_lines.append("\n---\n")
+            markdown_lines.append(f"\n*{' | '.join(metadata_parts)}*")
+            markdown_lines.append("\n---\n")
 
     return "\n".join(markdown_lines)
+
+
+def display_results(results, url, page_metadata, extract_metadata, show_debug):
+    """Display results in the Streamlit UI"""
+    if not results:
+        st.warning(
+            "No text content found matching your filters. Try adjusting your filter criteria."
+        )
+        return
+
+    st.success(f"Found {len(results)} text segments")
+
+    total_chars = sum(r["length"] for r in results)
+    avg_length = total_chars / len(results) if results else 0
+    interactive_count = len([
+        r for r in results if r["tag"] in ["a", "button", "input", "form"]
+    ])
+
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        st.metric("Total Elements", len(results))
+    with col2:
+        st.metric("Interactive Elements", interactive_count)
+    with col3:
+        st.metric("Total Characters", total_chars)
+    with col4:
+        st.metric("Average Length", f"{avg_length:.1f}")
+
+    if extract_metadata and any(page_metadata.values()):
+        st.markdown('<div class="metadata-box">', unsafe_allow_html=True)
+        st.subheader("📄 Page Metadata")
+        meta_col1, meta_col2 = st.columns(2)
+
+        with meta_col1:
+            if page_metadata.get("title"):
+                st.write(f"**Title:** {page_metadata['title']}")
+            if page_metadata.get("description"):
+                st.write(f"**Description:** {page_metadata['description'][:100]}...")
+            if page_metadata.get("author"):
+                st.write(f"**Author:** {page_metadata['author']}")
+            if page_metadata.get("lang"):
+                st.write(f"**Language:** {page_metadata['lang']}")
+
+        with meta_col2:
+            if page_metadata.get("keywords"):
+                st.write(f"**Keywords:** {page_metadata['keywords']}")
+            if page_metadata.get("canonical"):
+                st.write(f"**Canonical:** {page_metadata['canonical']}")
+            if page_metadata.get("robots"):
+                st.write(f"**Robots:** {page_metadata['robots']}")
+            if page_metadata.get("og_title"):
+                st.write(f"**OG Title:** {page_metadata['og_title']}")
+
+        st.markdown("</div>", unsafe_allow_html=True)
+
+    st.subheader("📥 Export Options")
+    col1, col2, col3 = st.columns(3)
+
+    markdown_content = create_markdown_content(results, url, page_metadata)
+    text_content = markdown_to_text(markdown_content)
+
+    with col1:
+        st.download_button(
+            label="📄 Download as Text",
+            data=text_content,
+            file_name=f"scraped_text_{urlparse(url).netloc}.txt",
+            mime="text/plain",
+        )
+
+    with col2:
+        st.download_button(
+            label="📝 Download as Markdown",
+            data=markdown_content,
+            file_name=f"scraped_content_{urlparse(url).netloc}.md",
+            mime="text/markdown",
+        )
+
+    with col3:
+        json_data = {
+            "metadata": page_metadata,
+            "url": url,
+            "scraped_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+            "total_elements": len(results),
+            "elements": results,
+        }
+        json_content = json.dumps(json_data, indent=2, ensure_ascii=False)
+        st.download_button(
+            label="📊 Download as JSON",
+            data=json_content,
+            file_name=f"scraped_data_{urlparse(url).netloc}.json",
+            mime="application/json",
+        )
+
+    st.subheader("📝 Extracted Content")
+
+    sort_by = st.selectbox(
+        "Sort by:", ["order", "length_desc", "length_asc", "tag_type"]
+    )
+
+    if sort_by == "length_desc":
+        results.sort(key=lambda x: x["length"], reverse=True)
+    elif sort_by == "length_asc":
+        results.sort(key=lambda x: x["length"])
+    elif sort_by == "tag_type":
+        results.sort(key=lambda x: (x["tag"], x["length"]), reverse=True)
+
+    items_per_page = st.selectbox("Items per page:", [10, 25, 50, 100], index=1)
+    total_pages = (len(results) - 1) // items_per_page + 1
+
+    if total_pages > 1:
+        page = st.selectbox("Page:", range(1, total_pages + 1))
+        start_idx = (page - 1) * items_per_page
+        end_idx = start_idx + items_per_page
+        page_results = results[start_idx:end_idx]
+    else:
+        page_results = results
+
+    for i, result in enumerate(page_results, 1):
+        title_parts = [
+            f"#{i}",
+            result["tag"].upper(),
+            f"({result['length']} chars)",
+        ]
+
+        if result.get("id"):
+            title_parts.insert(2, f"ID: {result['id']}")
+
+        if result["tag"] == "a" and result.get("href"):
+            title_parts.append("🔗")
+        elif result["tag"] == "button":
+            title_parts.append("🔘")
+        elif result["tag"] == "input":
+            title_parts.append("📝")
+        elif result["tag"] == "form":
+            title_parts.append("📋")
+
+        expander_title = " - ".join(title_parts)
+
+        with st.expander(expander_title):
+            st.text_area(
+                "Text Content:",
+                value=result["text"],
+                height=min(200, max(100, len(result["text"]) // 10)),
+                key=f"text_{i}_{result.get('id', 'no_id')}",
+                label_visibility="collapsed",
+            )
+
+            attr_cols = st.columns(3)
+
+            with attr_cols[0]:
+                if result.get("id"):
+                    st.caption(f"**ID:** `{result['id']}`")
+
+            with attr_cols[1]:
+                if result.get("href"):
+                    st.caption(f"**Link:** {result['href']}")
+                if result.get("type") and result["tag"] in ["button", "input"]:
+                    st.caption(f"**Type:** {result['type']}")
+                if result.get("method") and result["tag"] == "form":
+                    st.caption(f"**Method:** {result['method']}")
+
+            with attr_cols[2]:
+                if result.get("onclick"):
+                    st.caption(f"**OnClick:** `{result['onclick']}`")
+                if result.get("placeholder"):
+                    st.caption(f"**Placeholder:** {result['placeholder']}")
+                if result.get("action"):
+                    st.caption(f"**Action:** {result['action']}")
+
+            st.code(result["text"], language=None)
+
