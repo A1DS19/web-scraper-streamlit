@@ -94,18 +94,19 @@ def create_organized_text_content(results, url, page_metadata):
             element_groups[tag] = []
         element_groups[tag].append(result)
 
-    # Define the order of sections
+    # Group header elements together
+    header_elements = []
+    for tag in ["H1", "H2", "H3", "H4", "H5", "H6"]:
+        if tag in element_groups:
+            header_elements.extend(element_groups[tag])
+            del element_groups[tag]  # Remove from main groups to avoid duplication
+
+    # Define the order of sections (excluding individual header tags)
     section_order = [
         "BUTTON",
         "A",
         "FORM",
         "INPUT",
-        "H1",
-        "H2",
-        "H3",
-        "H4",
-        "H5",
-        "H6",
         "P",
         "DIV",
         "SPAN",
@@ -117,6 +118,17 @@ def create_organized_text_content(results, url, page_metadata):
         "FOOTER",
         "MAIN",
     ]
+
+    # Add headers section first if we have any
+    if header_elements:
+        text_lines.append("Headers:")
+        text_lines.append("")
+
+        for element in header_elements:
+            text_lines.append(element["text"])
+
+        text_lines.append("")
+        text_lines.append("")
 
     # Add sections in order
     for tag in section_order:
@@ -138,8 +150,20 @@ def create_organized_text_content(results, url, page_metadata):
                 text_lines.append("Forms:")
             elif tag == "INPUT":
                 text_lines.append("Input Fields:")
-            elif tag.startswith("H"):
-                text_lines.append("Headers:")
+            elif tag == "SECTION":
+                text_lines.append("Sections:")
+            elif tag == "LI":
+                text_lines.append("List Items:")
+            elif tag == "LABEL":
+                text_lines.append("Labels:")
+            elif tag == "NAV":
+                text_lines.append("Navigation:")
+            elif tag == "HEADER":
+                text_lines.append("Header Elements:")
+            elif tag == "FOOTER":
+                text_lines.append("Footer Elements:")
+            elif tag == "MAIN":
+                text_lines.append("Main Content:")
             else:
                 text_lines.append(f"{tag.title()}s:")
 
@@ -237,18 +261,19 @@ def create_markdown_content(results, url, page_metadata):
             element_groups[tag] = []
         element_groups[tag].append(result)
 
-    # Define the order of sections
+    # Group header elements together
+    header_elements = []
+    for tag in ["H1", "H2", "H3", "H4", "H5", "H6"]:
+        if tag in element_groups:
+            header_elements.extend(element_groups[tag])
+            del element_groups[tag]  # Remove from main groups to avoid duplication
+
+    # Define the order of sections (excluding individual header tags)
     section_order = [
         "BUTTON",
         "A",
         "FORM",
         "INPUT",
-        "H1",
-        "H2",
-        "H3",
-        "H4",
-        "H5",
-        "H6",
         "P",
         "DIV",
         "SPAN",
@@ -260,6 +285,20 @@ def create_markdown_content(results, url, page_metadata):
         "FOOTER",
         "MAIN",
     ]
+
+    # Add headers section first if we have any
+    if header_elements:
+        markdown_lines.append("## 📰 Headers")
+        markdown_lines.append("")
+
+        for element in header_elements:
+            if element["text"].strip():  # Only add non-empty content
+                markdown_lines.append(f"> {element['text']}")
+                markdown_lines.append("")
+
+        markdown_lines.append("")
+        markdown_lines.append("---")
+        markdown_lines.append("")
 
     # Add sections in order
     for tag in section_order:
@@ -281,8 +320,6 @@ def create_markdown_content(results, url, page_metadata):
                 markdown_lines.append("## 📋 Forms")
             elif tag == "INPUT":
                 markdown_lines.append("## 📄 Input Fields")
-            elif tag.startswith("H"):
-                markdown_lines.append("## 📰 Headers")
             elif tag == "SECTION":
                 markdown_lines.append("## 📑 Sections")
             elif tag == "LI":
