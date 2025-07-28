@@ -189,16 +189,18 @@ def create_organized_text_content(results, url, page_metadata):
 
 
 def create_markdown_content(results, url, page_metadata):
-    """Create comprehensive markdown content with metadata and summaries"""
+    """Create comprehensive markdown content with organized sections"""
     markdown_lines = []
     domain = urlparse(url).netloc
 
     # Page header with title from metadata
     page_title = page_metadata.get("title", f"Scraped Content from {domain}")
     markdown_lines.append(f"# {page_title}")
+    markdown_lines.append("")
 
     # Comprehensive page metadata section
-    markdown_lines.append(f"\n## 📄 Page Metadata")
+    markdown_lines.append("## 📄 Page Metadata")
+    markdown_lines.append("")
     markdown_lines.append(f"- **Source URL:** {url}")
     markdown_lines.append(f"- **Domain:** {domain}")
     markdown_lines.append(f"- **Scraped on:** {time.strftime('%Y-%m-%d %H:%M:%S')}")
@@ -223,105 +225,130 @@ def create_markdown_content(results, url, page_metadata):
             f"- **OG Description:** {page_metadata['og_description']}"
         )
 
-    markdown_lines.append("\n---\n")
+    markdown_lines.append("")
+    markdown_lines.append("---")
+    markdown_lines.append("")
 
-    # Separate elements by type for summary
-    buttons = [r for r in results if r["tag"] == "button"]
-    links = [r for r in results if r["tag"] == "a" and r.get("href")]
-    forms = [r for r in results if r["tag"] == "form"]
-    inputs = [r for r in results if r["tag"] == "input"]
-    other_elements = [
-        r for r in results if r["tag"] not in ["button", "a", "form", "input"]
+    # Group elements by type
+    element_groups = {}
+    for result in results:
+        tag = result["tag"].upper()
+        if tag not in element_groups:
+            element_groups[tag] = []
+        element_groups[tag].append(result)
+
+    # Define the order of sections
+    section_order = [
+        "BUTTON",
+        "A",
+        "FORM",
+        "INPUT",
+        "H1",
+        "H2",
+        "H3",
+        "H4",
+        "H5",
+        "H6",
+        "P",
+        "DIV",
+        "SPAN",
+        "SECTION",
+        "LI",
+        "LABEL",
+        "NAV",
+        "HEADER",
+        "FOOTER",
+        "MAIN",
     ]
 
-    # Interactive elements summary
-    if buttons or links or forms or inputs:
-        markdown_lines.append(f"## 🎯 Interactive Elements Summary")
+    # Add sections in order
+    for tag in section_order:
+        if tag in element_groups:
+            elements = element_groups[tag]
 
-        if buttons:
-            markdown_lines.append(f"\n### 🔘 Buttons ({len(buttons)})")
-            for i, btn in enumerate(buttons, 1):
-                btn_id = btn.get("id") or f"button-{i}"
-                btn_type = btn.get("type", "button")
-                markdown_lines.append(
-                    f'- **{btn_id}**: "{btn["text"]}" (Type: {btn_type})'
-                )
-
-        if links:
-            markdown_lines.append(f"\n### 🔗 Links ({len(links)})")
-            for i, link in enumerate(links, 1):
-                link_id = link.get("id") or f"link-{i}"
-                href = link.get("href", "No URL")
-                # Convert relative URLs to absolute
-                if href.startswith("/"):
-                    base_url = f"{urlparse(url).scheme}://{urlparse(url).netloc}"
-                    href = base_url + href
-                elif href.startswith("#"):
-                    href = url + href
-                elif not href.startswith(("http://", "https://", "mailto:", "tel:")):
-                    base_url = f"{urlparse(url).scheme}://{urlparse(url).netloc}"
-                    href = base_url + "/" + href.lstrip("/")
-                markdown_lines.append(f"- **{link_id}**: [{link['text']}]({href})")
-
-        if forms:
-            markdown_lines.append(f"\n### 📝 Forms ({len(forms)})")
-            for i, form in enumerate(forms, 1):
-                form_id = form.get("id") or f"form-{i}"
-                method = form.get("method", "GET").upper()
-                action = form.get("action", "No action")
-                markdown_lines.append(f"- **{form_id}**: {method} → {action}")
-
-        if inputs:
-            markdown_lines.append(f"\n### 📄 Input Fields ({len(inputs)})")
-            for i, inp in enumerate(inputs, 1):
-                input_id = inp.get("id") or inp.get("name") or f"input-{i}"
-                inp_type = inp.get("type", "text")
-                placeholder = inp.get("placeholder", "")
-                if placeholder:
-                    markdown_lines.append(
-                        f'- **{input_id}**: {inp_type} - "{placeholder}"'
-                    )
-                else:
-                    markdown_lines.append(f"- **{input_id}**: {inp_type}")
-
-        markdown_lines.append("\n---\n")
-
-    # Content sections with proper ID-based headers
-    if other_elements:
-        markdown_lines.append("## 📜 Other Content")
-        for i, result in enumerate(other_elements, 1):
-            element_id = result.get("id", "").strip()
-            element_tag = result["tag"].upper()
-
-            # Create smart section headers based on element type and ID
-            if result["tag"] in ["h1", "h2", "h3", "h4", "h5", "h6"]:
-                header_level = int(result["tag"][1]) + 1
-                if element_id:
-                    markdown_lines.append(
-                        f"{'#' * header_level} {result['text']} `#{element_id}`"
-                    )
-                else:
-                    markdown_lines.append(f"{'#' * header_level} {result['text']}")
+            # Section header with proper spacing and emoji
+            if tag == "A":
+                markdown_lines.append("## 🔗 Links")
+            elif tag == "BUTTON":
+                markdown_lines.append("## 🔘 Buttons")
+            elif tag == "P":
+                markdown_lines.append("## 📝 Paragraphs")
+            elif tag == "DIV":
+                markdown_lines.append("## 📦 Divs")
+            elif tag == "SPAN":
+                markdown_lines.append("## 🏷️ Spans")
+            elif tag == "FORM":
+                markdown_lines.append("## 📋 Forms")
+            elif tag == "INPUT":
+                markdown_lines.append("## 📄 Input Fields")
+            elif tag.startswith("H"):
+                markdown_lines.append("## 📰 Headers")
+            elif tag == "SECTION":
+                markdown_lines.append("## 📑 Sections")
+            elif tag == "LI":
+                markdown_lines.append("## 📋 List Items")
+            elif tag == "LABEL":
+                markdown_lines.append("## 🏷️ Labels")
+            elif tag == "NAV":
+                markdown_lines.append("## 🧭 Navigation")
+            elif tag == "HEADER":
+                markdown_lines.append("## 🎯 Header Elements")
+            elif tag == "FOOTER":
+                markdown_lines.append("## 🦶 Footer Elements")
+            elif tag == "MAIN":
+                markdown_lines.append("## 🎯 Main Content")
             else:
-                # Regular content with element ID or smart fallback
-                if element_id:
-                    section_title = f"{element_id}"
+                markdown_lines.append(f"## {tag.title()}s")
+
+            markdown_lines.append("")
+
+            # Add content for this section
+            for element in elements:
+                if tag == "A" and element.get("href"):
+                    # Format links as markdown links
+                    href = element.get("href", "")
+                    # Convert relative URLs to absolute
+                    if href.startswith("/"):
+                        base_url = f"{urlparse(url).scheme}://{urlparse(url).netloc}"
+                        href = base_url + href
+                    elif href.startswith("#"):
+                        href = url + href
+                    elif not href.startswith((
+                        "http://",
+                        "https://",
+                        "mailto:",
+                        "tel:",
+                    )):
+                        base_url = f"{urlparse(url).scheme}://{urlparse(url).netloc}"
+                        href = base_url + "/" + href.lstrip("/")
+
+                    markdown_lines.append(f"- [{element['text']}]({href})")
                 else:
-                    section_title = f"{element_tag.lower()}-{i}"
+                    # For all other types, add as quoted text blocks
+                    if element["text"].strip():  # Only add non-empty content
+                        markdown_lines.append(f"> {element['text']}")
+                        markdown_lines.append("")
 
-                markdown_lines.append(f"### {section_title} `({element_tag})`")
-                markdown_lines.append(f"\n{result['text']}")
+            markdown_lines.append("")
+            markdown_lines.append("---")
+            markdown_lines.append("")
 
-            # Add comprehensive metadata for all elements
-            metadata_parts = [f"**Length:** {result['length']} chars"]
+    # Add any remaining element types not in the ordered list
+    for tag, elements in element_groups.items():
+        if tag not in section_order:
+            markdown_lines.append(f"## {tag.title()}s")
+            markdown_lines.append("")
 
-            if result.get("id"):
-                metadata_parts.append(f"**ID:** `{result['id']}`")
+            for element in elements:
+                if element["text"].strip():  # Only add non-empty content
+                    markdown_lines.append(f"> {element['text']}")
+                    markdown_lines.append("")
 
-            markdown_lines.append(f"\n*{' | '.join(metadata_parts)}*")
-            markdown_lines.append("\n---\n")
+            markdown_lines.append("")
+            markdown_lines.append("---")
+            markdown_lines.append("")
 
-    return "\n".join(markdown_lines)
+    return "\n".join(markdown_lines).strip()
 
 
 def display_results(results, url, page_metadata, extract_metadata, show_debug):
