@@ -7,31 +7,185 @@ import re
 
 def markdown_to_text(markdown_string):
     """
-    Converts a markdown string to plain text.
+    Converts a markdown string to plain text with organized sections and proper spacing.
     """
-    # Remove headers
-    text = re.sub(r"#+\s", "", markdown_string)
-    # Remove bold and italics
-    text = re.sub(r"\*\*(.*?)\*\*|\*(.*?)\*", r"\1\2", text)
-    # Remove strikethrough
-    text = re.sub(r"~~(.*?)~~", r"\1", text)
+    # Remove code blocks first to avoid interference
+    text = re.sub(r"```.*?```", "", markdown_string, flags=re.DOTALL)
+
     # Remove inline code
     text = re.sub(r"`(.*?)`", r"\1", text)
-    # Remove code blocks
-    text = re.sub(r"```.*?```", "", text, flags=re.DOTALL)
-    # Remove links, keeping the text
-    text = re.sub(r"\[(.*?)\]\(.*?\)", r"\1", text)
+
     # Remove images
     text = re.sub(r"!\[.*?\]\(.*?\)", "", text)
+
+    # Convert links to "link name -> link URL" format
+    text = re.sub(r"\[(.*?)\]\((.*?)\)", r"\1 -> \2", text)
+
+    # Remove strikethrough
+    text = re.sub(r"~~(.*?)~~", r"\1", text)
+
+    # Remove bold and italics
+    text = re.sub(r"\*\*(.*?)\*\*|\*(.*?)\*", r"\1\2", text)
+
+    # Process headers - convert to section headers with spacing
+    text = re.sub(r"^### (.*?)$", r"\n\1:\n", text, flags=re.MULTILINE)
+    text = re.sub(r"^## (.*?)$", r"\n\n\1:\n", text, flags=re.MULTILINE)
+    text = re.sub(r"^# (.*?)$", r"\n\n\1\n" + "=" * 50 + "\n", text, flags=re.MULTILINE)
+
+    # Remove remaining header markers
+    text = re.sub(r"^#+\s", "", text, flags=re.MULTILINE)
+
     # Remove horizontal rules
-    text = re.sub(r"---", "", text)
+    text = re.sub(r"^---+$", "", text, flags=re.MULTILINE)
+
     # Remove blockquotes
     text = re.sub(r"^>+\s?", "", text, flags=re.MULTILINE)
-    # Remove list items
-    text = re.sub(r"^\s*[\*\-]\s+", "", text, flags=re.MULTILINE)
-    # Remove extra newlines
-    text = re.sub(r"\n{2,}", "\n", text)
+
+    # Remove list item markers but keep the content
+    text = re.sub(r"^\s*[\*\-]\s+", "• ", text, flags=re.MULTILINE)
+
+    # Clean up extra newlines but preserve section spacing
+    text = re.sub(r"\n{3,}", "\n\n", text)
+
+    # Add spacing after section headers
+    text = re.sub(r"(\w+:)\n", r"\1\n\n", text)
+
     return text.strip()
+
+
+def create_organized_text_content(results, url, page_metadata):
+    """Create organized plain text content grouped by element types"""
+    text_lines = []
+    domain = urlparse(url).netloc
+
+    # Page header
+    page_title = page_metadata.get("title", f"Scraped Content from {domain}")
+    text_lines.append(page_title)
+    text_lines.append("=" * 50)
+    text_lines.append("")
+
+    # Page metadata section
+    text_lines.append("Page Metadata:")
+    text_lines.append("")
+    text_lines.append(f"• Source URL: {url}")
+    text_lines.append(f"• Domain: {domain}")
+    text_lines.append(f"• Scraped on: {time.strftime('%Y-%m-%d %H:%M:%S')}")
+    text_lines.append(f"• Total elements: {len(results)}")
+
+    if page_metadata.get("description"):
+        text_lines.append(f"• Description: {page_metadata['description']}")
+    if page_metadata.get("keywords"):
+        text_lines.append(f"• Keywords: {page_metadata['keywords']}")
+    if page_metadata.get("author"):
+        text_lines.append(f"• Author: {page_metadata['author']}")
+    if page_metadata.get("lang"):
+        text_lines.append(f"• Language: {page_metadata['lang']}")
+    if page_metadata.get("canonical"):
+        text_lines.append(f"• Canonical URL: {page_metadata['canonical']}")
+
+    text_lines.append("")
+    text_lines.append("")
+
+    # Group elements by type
+    element_groups = {}
+    for result in results:
+        tag = result["tag"].upper()
+        if tag not in element_groups:
+            element_groups[tag] = []
+        element_groups[tag].append(result)
+
+    # Define the order of sections
+    section_order = [
+        "BUTTON",
+        "A",
+        "FORM",
+        "INPUT",
+        "H1",
+        "H2",
+        "H3",
+        "H4",
+        "H5",
+        "H6",
+        "P",
+        "DIV",
+        "SPAN",
+        "SECTION",
+        "LI",
+        "LABEL",
+        "NAV",
+        "HEADER",
+        "FOOTER",
+        "MAIN",
+    ]
+
+    # Add sections in order
+    for tag in section_order:
+        if tag in element_groups:
+            elements = element_groups[tag]
+
+            # Section header with proper spacing
+            if tag == "A":
+                text_lines.append("Links:")
+            elif tag == "BUTTON":
+                text_lines.append("Buttons:")
+            elif tag == "P":
+                text_lines.append("Paragraphs:")
+            elif tag == "DIV":
+                text_lines.append("Divs:")
+            elif tag == "SPAN":
+                text_lines.append("Spans:")
+            elif tag == "FORM":
+                text_lines.append("Forms:")
+            elif tag == "INPUT":
+                text_lines.append("Input Fields:")
+            elif tag.startswith("H"):
+                text_lines.append("Headers:")
+            else:
+                text_lines.append(f"{tag.title()}s:")
+
+            text_lines.append("")
+
+            # Add content for this section
+            for element in elements:
+                if tag == "A" and element.get("href"):
+                    # Format links as "text -> url"
+                    href = element.get("href", "")
+                    # Convert relative URLs to absolute
+                    if href.startswith("/"):
+                        base_url = f"{urlparse(url).scheme}://{urlparse(url).netloc}"
+                        href = base_url + href
+                    elif href.startswith("#"):
+                        href = url + href
+                    elif not href.startswith((
+                        "http://",
+                        "https://",
+                        "mailto:",
+                        "tel:",
+                    )):
+                        base_url = f"{urlparse(url).scheme}://{urlparse(url).netloc}"
+                        href = base_url + "/" + href.lstrip("/")
+
+                    text_lines.append(f"{element['text']} -> {href}")
+                else:
+                    # For all other types, just add the text content
+                    text_lines.append(element["text"])
+
+            text_lines.append("")
+            text_lines.append("")
+
+    # Add any remaining element types not in the ordered list
+    for tag, elements in element_groups.items():
+        if tag not in section_order:
+            text_lines.append(f"{tag.title()}s:")
+            text_lines.append("")
+
+            for element in elements:
+                text_lines.append(element["text"])
+
+            text_lines.append("")
+            text_lines.append("")
+
+    return "\n".join(text_lines).strip()
 
 
 def create_markdown_content(results, url, page_metadata):
@@ -226,13 +380,14 @@ def display_results(results, url, page_metadata, extract_metadata, show_debug):
     st.subheader("📥 Export Options")
     col1, col2, col3 = st.columns(3)
 
+    # Use the new organized text content function
+    organized_text_content = create_organized_text_content(results, url, page_metadata)
     markdown_content = create_markdown_content(results, url, page_metadata)
-    text_content = markdown_to_text(markdown_content)
 
     with col1:
         st.download_button(
             label="📄 Download as Text",
-            data=text_content,
+            data=organized_text_content,  # Use the new organized content
             file_name=f"scraped_text_{urlparse(url).netloc}.txt",
             mime="text/plain",
         )
@@ -338,4 +493,3 @@ def display_results(results, url, page_metadata, extract_metadata, show_debug):
                     st.caption(f"**Action:** {result['action']}")
 
             st.code(result["text"], language=None)
-
